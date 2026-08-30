@@ -1,0 +1,42 @@
+# Docker ignore — exclude everything not needed in the image
+# This keeps the build context small and the image lean
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Training data and model artifacts (mounted as volume at runtime)
+data/
+
+# Notebooks — not needed in production image
+notebooks/
+
+# Tests — not needed in production image
+tests/
+
+# Development files
+.git/
+.gitignore
+*.md
+logs/
+
+# IDE / OS files
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Config files with secrets (use env vars or Docker secrets in production)
+.env
+*.env

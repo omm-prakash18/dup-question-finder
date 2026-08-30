@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Data (too large for git; use DVC or S3 for versioning)
+data/raw/
+data/processed/
+data/faiss/
+data/models/
+*.parquet
+*.npy
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.DS_Store
+
+# Environment variables
+.env
+*.env

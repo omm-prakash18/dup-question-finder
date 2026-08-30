@@ -1,0 +1,57 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Similar Question Finder
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Usage:
+#   Build model artifacts first (outside Docker):
+#     python src/data/download_data.py
+#     python src/data/preprocess.py
+#     python src/models/sbert_pipeline.py
+#
+#   Then run the API:
+#     docker-compose up --build
+#
+#   Access:
+#     API:     http://localhost:8000
+#     Swagger: http://localhost:8000/docs
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: similar_questions_api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the data directory (contains FAISS index, SQLite DB, fine-tuned model)
+      # This means you can update the index without rebuilding the Docker image
+      - ./data:/app/data:ro    # read-only inside the container
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TRANSFORMERS_CACHE=/app/data/models/hf_cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]    # requires NVIDIA Container Toolkit
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s    # give model time to load on startup
+
+  # Optional: Prometheus metrics scraping (for production monitoring)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml

@@ -1,0 +1,64 @@
+# ─── Paths ────────────────────────────────────────────────────────────────────
+paths:
+  raw_data:       "data/raw"
+  processed_data: "data/processed"
+  faiss_dir:      "data/faiss"
+  model_dir:      "data/models"
+  logs_dir:       "logs"
+
+# ─── Dataset ──────────────────────────────────────────────────────────────────
+dataset:
+  name: "quora"            # HuggingFace dataset id
+  split: "train"           # The quora HF dataset has only a train split
+  seed: 42
+  test_size: 0.15
+  val_size: 0.05
+
+# ─── Preprocessing ────────────────────────────────────────────────────────────
+preprocessing:
+  lowercase: true
+  expand_contractions: true
+  remove_html: true
+  remove_urls: true
+  normalize_whitespace: true
+  # NOTE: skip tokenization/stemming/stopword removal for transformer models
+
+# ─── Classical Baseline ───────────────────────────────────────────────────────
+baseline:
+  tfidf_max_features: 50000
+  tfidf_ngram_range: [1, 2]
+  xgb_n_estimators: 500
+  xgb_max_depth: 6
+  xgb_learning_rate: 0.05
+  xgb_subsample: 0.8
+  xgb_eval_metric: "auc"
+
+# ─── SBERT Fine-tuning ────────────────────────────────────────────────────────
+sbert:
+  base_model: "sentence-transformers/all-mpnet-base-v2"
+  output_model_dir: "data/models/sbert_finetuned"
+  batch_size: 64
+  num_epochs: 3
+  warmup_ratio: 0.1
+  learning_rate: 2.0e-5
+  max_seq_length: 128
+  loss: "OnlineContrastiveLoss"  # Good for duplicate detection
+  # Alternative: "CosineSimilarityLoss" for regression over [0,1]
+
+# ─── FAISS Index ──────────────────────────────────────────────────────────────
+faiss:
+  index_type: "IVFFlat"    # IVF for large corpora (1M+); "Flat" for exact search
+  nlist: 4096              # Number of Voronoi cells (sqrt(N) is a good heuristic)
+  nprobe: 64               # Cells to search at query time (speed/accuracy trade-off)
+  metric: "INNER_PRODUCT"  # Use IP with L2-normalized vectors = cosine similarity
+  use_gpu: false   # Set to true only after: conda install -c pytorch -c nvidia faiss-gpu
+  index_filename: "questions.index"
+  metadata_db: "questions.db"
+
+# ─── API ──────────────────────────────────────────────────────────────────────
+api:
+  host: "0.0.0.0"
+  port: 8000
+  top_k_default: 5
+  top_k_max: 20
+  score_threshold: 0.5     # Minimum cosine similarity to include in results
