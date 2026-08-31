@@ -30,12 +30,18 @@ def mock_retriever():
     """Mock retriever returning deterministic results."""
     retriever = MagicMock()
     retriever.index.ntotal = 500000
-    retriever.search.return_value = [
+    retriever.cache_hits = 10
+    retriever.cache_misses = 2
+    sample_res = [
         {"question_id": 101, "question_text": "How do I learn Python programming quickly?", "score": 0.94},
         {"question_id": 102, "question_text": "Best resources for Python beginners", "score": 0.88},
         {"question_id": 103, "question_text": "What is the best way to master Python?", "score": 0.76},
         {"question_id": 104, "question_text": "How long does Python take to learn?", "score": 0.45},
     ]
+    retriever.search.return_value = sample_res
+    retriever.search_with_cache.return_value = (sample_res, False)
+    retriever.search_batch.return_value = [sample_res, sample_res]
+    retriever.add_question.return_value = (500001, 500000)
     return retriever
 
 
@@ -72,11 +78,13 @@ class TestFindSimilarEndpointValidation:
         assert res.status_code == 200
         data = res.json()
         assert data["query"] == "How to learn Python?"
+        assert len(data["results"]) == 3
         assert data["result_count"] == 3
         assert "latency_ms" in data
 
     def test_results_are_sorted_descending_by_score(self, client):
-        res = client.post("/find_similar", json={"question": "How to learn Python?", "top_k": 4, "score_threshold": 0.0})
+        res = client.post("/find_similar", json={"question": "How to learn Python?", "top_k": 4})
+        assert res.status_code == 200
         data = res.json()
         scores = [r["score"] for r in data["results"]]
         assert scores == sorted(scores, reverse=True), f"Results not sorted descending: {scores}"
@@ -122,3 +130,52 @@ class TestFindSimilarEndpointValidation:
         results = res.json()["results"]
         # Only scores >= 0.80 should pass filter
         assert all(r["score"] >= 0.80 for r in results)
+
+
+class TestAdvancedEndpoints:
+    def test_find_similar_batch(self, client):
+        res = client.post(
+            "/find_similar/batch",
+            json={
+                "questions": ["How to learn Python?", "What is deep learning?"],
+                "top_k": 2,
+            }
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["query_count"] == 2
+        assert len(data["responses"]) == 2
+        assert "total_latency_ms" in data
+
+    def test_ingest_question(self, client):
+        res = client.post(
+            "/questions",
+            json={"question_text": "What is the capital of France?"}
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["question_id"] == 500001
+        assert data["status"] == "success"
+
+    def test_submit_feedback(self, client):
+        res = client.post(
+            "/feedback",
+            json={
+                "query": "How to learn Python?",
+                "retrieved_question_id": 101,
+                "is_relevant": True,
+                "user_rating": 5,
+            }
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "logged"
+        assert "feedback_id" in data
+
+    def test_metrics(self, client):
+        res = client.get("/metrics")
+        assert res.status_code == 200
+        data = res.json()
+        assert "index_size" in data
+        assert "cache_hit_rate" in data
+        assert "uptime_seconds" in data
