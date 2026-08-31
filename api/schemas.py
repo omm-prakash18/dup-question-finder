@@ -58,6 +58,8 @@ class SimilarQuestionResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Response from /health endpoint."""
+    model_config = {"protected_namespaces": ()}
+
     status:          str
     model_loaded:    bool
     index_size:      int = Field(description="Number of vectors in the FAISS index.")

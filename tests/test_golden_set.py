@@ -72,7 +72,7 @@ class TestGoldenSetRegression:
         import joblib
         import pandas as pd
         from src.models.sbert_pipeline import SimilarQuestionRetriever
-        from sentence_transformers import util
+        import torch.nn.functional as F
 
         sbert_path = Path(CFG["paths"]["model_dir"]) / "sbert_finetuned"
         if not sbert_path.exists():
@@ -91,7 +91,7 @@ class TestGoldenSetRegression:
         q1_embs = retriever.model.encode(df_golden["q1"].tolist(), convert_to_tensor=True)
         q2_embs = retriever.model.encode(df_golden["q2"].tolist(), convert_to_tensor=True)
         
-        sims = util.cos_sim(q1_embs, q2_embs).diagonal().cpu().numpy()
+        sims = F.cosine_similarity(q1_embs, q2_embs).cpu().numpy()
         preds = (sims >= 0.50).astype(int)
         labels = df_golden["label"].values
 

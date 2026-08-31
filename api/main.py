@@ -129,7 +129,7 @@ async def log_requests(request: Request, call_next):
     elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info(
         f"{request.method} {request.url.path} "
-        f"→ {response.status_code} ({elapsed_ms:.1f}ms)"
+        f"-> {response.status_code} ({elapsed_ms:.1f}ms)"
     )
     return response
 

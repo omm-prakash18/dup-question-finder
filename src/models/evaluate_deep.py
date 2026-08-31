@@ -85,7 +85,7 @@ def run_deep_evaluation():
         print(f"Test file {test_path} not found.")
         return
 
-    test = pd.read_parquet(test_path)
+    test = pd.read_parquet(test_path).reset_index(drop=True)
     y_test = test["is_duplicate"].values
 
     # Check if XGBoost baseline model exists
@@ -125,7 +125,7 @@ def run_deep_evaluation():
             slice_pred = (slice_prob >= 0.5).astype(int)
 
             prec = evaluate_classifier(slice_y, slice_pred, slice_prob)
-            print(f"  {slice_name:<20s} (N={len(slice_df):<6,}) → F1: {prec['f1']:.4f} | AUC: {prec.get('auc_roc', 0):.4f}")
+            print(f"  {slice_name:<20s} (N={len(slice_df):<6,}) -> F1: {prec['f1']:.4f} | AUC: {prec.get('auc_roc', 0):.4f}")
 
         # Diagnostic False Positives & Negatives
         analyze_false_positives_and_negatives(test, y_test, y_prob, threshold=0.5, top_n=5)
