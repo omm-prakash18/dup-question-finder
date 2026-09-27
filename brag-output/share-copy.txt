@@ -1,0 +1,8 @@
+Just shipped dup-question-finder 🔍 — a high-performance NLP pipeline & FastAPI microservice powered by fine-tuned Sentence-BERT (all-mpnet-base-v2) and FAISS for sub-millisecond semantic duplicate question retrieval!
+
+⚡ Sub-10ms p50 vector retrieval across 1M+ questions
+🎯 84% accuracy & 82.8% Average Precision
+🚀 100% verified test coverage (56/56 passing tests)
+🛠 Dynamic question ingestion + LRU semantic caching + user feedback loops
+
+Check out the repo: https://github.com/omm-prakash18/dup-question-finder
