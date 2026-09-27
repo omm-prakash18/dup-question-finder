@@ -359,6 +359,13 @@ class SimilarQuestionRetriever:
                 logger.info("faiss-gpu not available — searching on CPU (still fast).")
 
         self.db_path = db_path
+        self.cache = []  # list of (query_text, query_emb, results)
+        self.cache_threshold = CFG["api"].get("cache_threshold", 0.95)
+        self.cache_max_size = CFG["api"].get("cache_max_size", 1000)
+        self.cache_hits = 0
+        self.cache_misses = 0
+
+        self._reranker = None
         logger.info("Retriever ready.")
 
     def embed_query(self, question: str) -> np.ndarray:
@@ -367,6 +374,7 @@ class SimilarQuestionRetriever:
             [question],
             normalize_embeddings=True,
             convert_to_numpy=True,
+            show_progress_bar=False,
         )
         return emb.astype(np.float32)
 
@@ -383,6 +391,98 @@ class SimilarQuestionRetriever:
         # scores[0] and faiss_ids[0] are the results for the single query
         results = self._fetch_from_sqlite(faiss_ids[0].tolist(), scores[0].tolist())
         return results
+
+    def search_batch(self, questions: list[str], top_k: int = 5) -> list[list[dict]]:
+        """Vectorized batch search for multiple questions."""
+        embs = self.model.encode(
+            questions,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        ).astype(np.float32)
+
+        scores_batch, faiss_ids_batch = self.index.search(embs, top_k)
+
+        all_results = []
+        for scores, faiss_ids in zip(scores_batch, faiss_ids_batch):
+            res = self._fetch_from_sqlite(faiss_ids.tolist(), scores.tolist())
+            all_results.append(res)
+        return all_results
+
+    def search_with_cache(self, question: str, top_k: int = 5) -> tuple[list[dict], bool]:
+        """
+        Search with in-memory semantic LRU caching.
+        Returns: (results, was_cached)
+        """
+        query_emb = self.embed_query(question)
+
+        # Check semantic cache
+        for cached_q, cached_emb, cached_res in reversed(self.cache):
+            sim = float(np.dot(query_emb[0], cached_emb[0]))
+            if sim >= self.cache_threshold:
+                self.cache_hits += 1
+                return cached_res[:top_k], True
+
+        # Cache miss
+        self.cache_misses += 1
+        scores, faiss_ids = self.index.search(query_emb, top_k)
+        results = self._fetch_from_sqlite(faiss_ids[0].tolist(), scores[0].tolist())
+
+        # Save to cache
+        if len(self.cache) >= self.cache_max_size:
+            self.cache.pop(0)
+        self.cache.append((question, query_emb, results))
+
+        return results, False
+
+    def add_question(self, question_text: str) -> tuple[int, int]:
+        """
+        Dynamically embed and insert a new question into FAISS index and SQLite DB.
+        Returns: (new_question_id, new_faiss_idx)
+        """
+        emb = self.embed_query(question_text)
+        faiss_idx = int(self.index.ntotal)
+        self.index.add(emb)
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COALESCE(MAX(question_id), 0) + 1 FROM questions")
+        new_qid = int(cursor.fetchone()[0])
+
+        cursor.execute(
+            "INSERT INTO questions (question_id, question_text, faiss_idx) VALUES (?, ?, ?)",
+            (new_qid, question_text, faiss_idx),
+        )
+        conn.commit()
+        conn.close()
+        logger.info(f"Dynamically ingested question id={new_qid}, faiss_idx={faiss_idx}")
+        return new_qid, faiss_idx
+
+    def rerank(self, query: str, candidates: list[dict], top_k: int = 5) -> list[dict]:
+        """
+        Re-ranks candidate questions using a Cross-Encoder model.
+        """
+        if not candidates:
+            return candidates
+
+        if self._reranker is None:
+            try:
+                from sentence_transformers import CrossEncoder
+                rerank_model_name = CFG["api"].get("rerank_model", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+                logger.info(f"Loading CrossEncoder reranker: {rerank_model_name}")
+                self._reranker = CrossEncoder(rerank_model_name)
+            except Exception as e:
+                logger.warning(f"Could not load CrossEncoder: {e}. Skipping reranking.")
+                return candidates[:top_k]
+
+        pairs = [[query, c["question_text"]] for c in candidates]
+        scores = self._reranker.predict(pairs)
+
+        for c, score in zip(candidates, scores):
+            c["score"] = round(float(score), 4)
+
+        candidates = sorted(candidates, key=lambda x: x["score"], reverse=True)
+        return candidates[:top_k]
 
     def _fetch_from_sqlite(self, faiss_ids: list, scores: list) -> list[dict]:
         """Map FAISS integer IDs back to question text via SQLite."""

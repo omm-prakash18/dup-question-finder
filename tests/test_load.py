@@ -32,9 +32,11 @@ async def run_load_test(total_requests: int = 50, concurrency: int = 5):
     if getattr(app.state, "retriever", None) is None:
         mock = MagicMock()
         mock.index.ntotal = 500000
-        mock.search.return_value = [
+        sample_results = [
             {"question_id": 1, "question_text": "Sample duplicate question text", "score": 0.89}
         ]
+        mock.search.return_value = sample_results
+        mock.search_with_cache.return_value = (sample_results, False)
         app.state.retriever = mock
 
     transport = ASGITransport(app=app)
